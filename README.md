@@ -54,3 +54,14 @@ pip install pdfplumber --break-system-packages
 ```
 
 See CHANGELOG.md for what's built, what's new/unvalidated, and what's planned.
+
+## Git / GitHub
+
+This repo is tracked on GitHub at
+[writtinfool/newtree-reconciliation-pipeline](https://github.com/writtinfool/newtree-reconciliation-pipeline),
+configured locally as the `dev` remote, tracking `main`:
+
+```bash
+git remote -v   # dev  https://github.com/writtinfool/newtree-reconciliation-pipeline.git
+git push dev main
+```
