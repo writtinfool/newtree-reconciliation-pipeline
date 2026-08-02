@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Generated outputs -- these are per-deal artifacts, not source code.
+# Reconciled JSONs and generated briefs live in Drive, not this repo.
+*.docx
+*.pdf
+*.jpg
+*.jpeg
+reconciled_*.json
+brief_*.json
+
+# Test/sample fixtures used during development -- not part of the pipeline itself
+inlet_test*.csv
+sample_ai_insight.txt
+Comps_Report-18.pdf
+
+# Local env
+.env
