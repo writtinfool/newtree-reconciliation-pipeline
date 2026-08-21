@@ -23,6 +23,22 @@ Get a free Census key (instant, no approval wait) at:
 
 Get a free BLS key (raises limit from 25/day to 500/day, 10yr to 20yr span) at:
     https://data.bls.gov/registrationEngine/
+
+STATUS AS OF LAST BUILD (2026-08-21): county- and place-level population,
+median household income, renter-occupied %, and unemployment trend are
+implemented and CONFIRMED WORKING LIVE with a real Census API key against
+84 Inlet Dr, Slidell, LA. Population trend is also confirmed working, but
+via ACS 5-Year vintage comparison rather than the Census PEP dataset --
+live diagnostic testing found PEP's 2020s-vintage data is not currently
+reachable through the public API (2019 works, 2020-2024 do not; see the
+NOTE near the top of this file). The nearest-city fallback chain
+(incorporated place > CDP > mailing city > county subdivision) is also
+confirmed working live -- correctly returns "Eden Isle" rather than the
+meaningless voting-district name "District 12" for this address. Metro/CBSA
+context, distance calculations, nearest-INCORPORATED-city lookup (via a
+Places-tool search), commercial centers, and permit-office routing were
+planned in detail but NOT implemented in this file -- see the companion
+Demographics & Economics Module doc for the full backlog.
 """
 
 import os
@@ -37,11 +53,20 @@ BLS_API_KEY = os.environ.get("BLS_API_KEY", "")
 
 GEOCODER_URL = "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
 ACS_URL_TMPL = "https://api.census.gov/data/{year}/acs/acs5"
-PEP_URL_TMPL = "https://api.census.gov/data/{year}/pep/population"
 BLS_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
 ACS_YEAR = 2023          # latest available 5-year ACS release as of this build
-PEP_YEARS = [2020, 2021, 2022, 2023, 2024]  # PEP vintages to try, newest first
+
+# NOTE: pep/population (Census PEP dataset) is NOT currently used by this module.
+# Live diagnostic testing on 2026-08-21 confirmed that, of vintages 2018-2024,
+# only 2019 returns real data through this API; 2020, 2022, 2023, and 2024 all
+# 404, and 2021 fails with a structural "unknown/unsupported geography hierarchy"
+# error. This appears to be a genuine, current gap in Census's own API (their
+# documentation states current PEP estimates aren't API-supported right now),
+# not a bug in this code. get_population_trend() below uses ACS 5-Year vintage
+# comparison instead, which is confirmed working. If PEP access is restored in
+# the future, api.census.gov/data/{year}/pep/population is the right base URL
+# to revisit -- re-run a diagnostic (see diagnose_pep.py) before trusting it again.
 
 
 def _http_get_json(url, params=None):
@@ -79,10 +104,10 @@ def geocode_address(address):
 
     is_incorporated = len(place) > 0 and place[0]
     place_info = place[0] if is_incorporated else {}
-    # CDP (e.g. "Eden Isle CDP") is a real, recognizable populated-place name for
-    # unincorporated areas -- a much better fallback than county subdivision, which
-    # in Louisiana (and some other states) is a voting ward / police jury district
-    # ("District 12") with no public recognition value.
+    # CDP (Census Designated Place, e.g. "Eden Isle CDP") is a real, recognizable
+    # populated-place name for unincorporated areas -- much better fallback than
+    # a county subdivision, which in Louisiana/some states is a voting ward or
+    # police jury district ("District 12") with no public recognition value.
     cdp_info = cdp[0] if (len(cdp) > 0 and cdp[0]) else {}
 
     return {
@@ -111,6 +136,11 @@ def _nearest_city_name(geo, original_address=""):
       4. County subdivision name -- last resort, since in some states (e.g. Louisiana
          police jury wards) this is a voting district with no public recognition value,
          so it is deliberately ranked below the mailing-city fallback.
+
+    BUG HISTORY: the original version of this function used county_subdivision_name
+    as the only fallback, which surfaced "District 12" (a Louisiana voting ward) as
+    the "nearest city" for 84 Inlet Dr instead of the real, recognizable "Eden Isle."
+    Fixed by adding the CDP and mailing-city tiers above county subdivision.
     """
     if geo.get("is_incorporated"):
         return {"name": geo["place_name"], "caveat": None}
@@ -215,41 +245,78 @@ def get_acs_data(state_fips, county_fips, place_fips=None):
 
 
 def get_population_trend(state_fips, county_fips):
-    """County-level population trend across available PEP vintages."""
+    """
+    County-level population trend, built by comparing two ACS 5-Year vintages
+    rather than PEP.
+
+    HISTORY OF THIS FUNCTION (all three attempts, so the next person doesn't
+    repeat the investigation): the original version queried
+    api.census.gov/data/{year}/pep/population once per calendar year, which
+    doesn't match the modern PEP API's one-endpoint-per-vintage structure. A
+    second version fixed that (querying a single vintage's full DATE_CODE
+    time series) but still failed. Live diagnostic testing with a real key
+    (2026-08-21) against St. Tammany Parish, LA nailed down why: of vintages
+    2018-2024, only 2019 returned real data (HTTP 200); 2021 failed with a
+    DIFFERENT error ("unknown/unsupported geography hierarchy" -- a
+    structural change, not just missing data); 2020, 2022, 2023, and 2024
+    all 404'd outright. This means the entire 2020s-vintage PEP system
+    appears to be genuinely unpublished/broken via this API right now --
+    consistent with Census's own documentation stating "Current estimates
+    are unable to be supported by the API at this time." This is a gap on
+    Census's end, not a bug in this code, and chasing it further was not
+    worth it once ACS was confirmed to work reliably across the same years.
+
+    FIX: build the trend from ACS 5-Year population totals at two vintages
+    instead -- confirmed live that vintages 2018 through 2023 are all
+    reachable. This trades PEP's annual point-estimates for ACS's rolling
+    5-year averages, which is a real precision tradeoff worth knowing about
+    (see the note in the returned dict), but it works today, and it reuses
+    the exact same ACS call already proven functional for the main
+    population/income/renter-% figures.
+    """
     if not CENSUS_API_KEY:
         return {"error": "CENSUS_API_KEY not set"}
 
-    trend = {}
-    for year in PEP_YEARS:
-        try:
-            data = _http_get_json(PEP_URL_TMPL.format(year=year), {
-                "get": "NAME,POP",
-                "for": f"county:{county_fips}",
-                "in": f"state:{state_fips}",
-                "key": CENSUS_API_KEY,
-            })
-            headers, row = data[0], data[1]
-            rec = dict(zip(headers, row))
-            trend[str(year)] = int(rec["POP"])
-        except urllib.error.HTTPError:
-            continue  # vintage not published for this year yet, or endpoint moved
-        except Exception:
-            continue
+    EARLY_VINTAGE = 2018
+    LATE_VINTAGE = ACS_YEAR  # currently 2023, kept in sync with the main ACS call
 
-    if len(trend) < 2:
-        return {"error": "Insufficient PEP vintages returned to build a trend", "raw": trend}
+    def _pull(vintage):
+        data = _http_get_json(ACS_URL_TMPL.format(year=vintage), {
+            "get": "NAME,B01003_001E",
+            "for": f"county:{county_fips}",
+            "in": f"state:{state_fips}",
+            "key": CENSUS_API_KEY,
+        })
+        headers, row = data[0], data[1]
+        rec = dict(zip(headers, row))
+        return int(rec["B01003_001E"])
 
-    years_sorted = sorted(trend.keys())
-    first, last = trend[years_sorted[0]], trend[years_sorted[-1]]
-    pct_change = round(100 * (last - first) / first, 1) if first else None
+    try:
+        early_pop = _pull(EARLY_VINTAGE)
+    except Exception as e:
+        return {"error": f"ACS pull failed for {EARLY_VINTAGE} vintage: {e}"}
+
+    try:
+        late_pop = _pull(LATE_VINTAGE)
+    except Exception as e:
+        return {"error": f"ACS pull failed for {LATE_VINTAGE} vintage: {e}"}
+
+    pct_change = round(100 * (late_pop - early_pop) / early_pop, 1) if early_pop else None
 
     return {
-        "by_year": trend,
+        "early_vintage": f"{EARLY_VINTAGE} ACS 5-Year (5-yr rolling avg centered on {EARLY_VINTAGE})",
+        "early_population": early_pop,
+        "late_vintage": f"{LATE_VINTAGE} ACS 5-Year (5-yr rolling avg centered on {LATE_VINTAGE})",
+        "late_population": late_pop,
+        "pct_change": pct_change,
         "direction": "growing" if pct_change and pct_change > 0.5 else (
             "declining" if pct_change and pct_change < -0.5 else "roughly flat"
         ),
-        "pct_change": pct_change,
-        "span": f"{years_sorted[0]}-{years_sorted[-1]}",
+        "note": "Built from ACS 5-Year rolling-average population, not PEP annual point estimates -- "
+                "PEP's 2020s data is currently unpublished/unreachable via the Census API (confirmed via "
+                "live diagnostic testing, not assumed). ACS 5-year figures smooth over short-term swings, "
+                "so this trend understates year-to-year volatility compared to what PEP would show if it "
+                "were available. Re-check periodically whether PEP's API access has been restored.",
     }
 
 
@@ -279,8 +346,9 @@ def get_bls_unemployment_trend(state_fips, county_fips):
         return {"error": data.get("message", "BLS request failed")}
 
     series = data.get("Results", {}).get("series", [{}])[0].get("data", [])
-    # period is "M01".."M12" -- sort on (year, month number), not periodName (alphabetical would
-    # put "December" before "November", giving a wrong "latest" point)
+    # period is "M01".."M12" -- sort on (year, period), not periodName. periodName is
+    # alphabetical ("December" < "November"), which produced a wrong "latest" point
+    # in the first version of this function -- fixed here.
     points = [(d["year"], d["period"], d["periodName"], d["value"]) for d in series if d["value"] != "-"]
     points.sort(key=lambda p: (p[0], p[1]))  # chronological: year asc, then M01..M12 asc
 
