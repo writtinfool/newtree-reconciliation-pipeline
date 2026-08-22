@@ -22,3 +22,10 @@ Comps_Report-18.pdf
 
 # Claude Code local settings (machine-specific, not shared)
 .claude/
+
+# Product templates -- reusable, versioned source (tracked despite the
+# extension-based ignores above, which target generated PER-DEAL output,
+# not source templates). Deal-specific filled copies stay out of git
+# (Drive Client Deliverable / Internal Working Files instead).
+!/product-templates/
+!/product-templates/**
