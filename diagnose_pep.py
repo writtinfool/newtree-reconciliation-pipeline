@@ -16,6 +16,25 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+def _load_dotenv(path=None):
+    """Tiny .env loader -- no new dependency (python-dotenv) needed for one
+    key/value file. Looks for a .env file next to this script; does nothing
+    if it's absent. Existing real environment variables always win (uses
+    setdefault), so this never overrides a value you've set another way."""
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
 CENSUS_API_KEY = os.environ.get("CENSUS_API_KEY", "")
 
 if not CENSUS_API_KEY:
