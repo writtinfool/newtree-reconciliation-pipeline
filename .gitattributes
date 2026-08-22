@@ -1,0 +1,24 @@
+# Normalize line endings across platforms.
+# This repo's committed files are stored as LF. On checkout, Git will
+# convert text files to your platform's native line ending (CRLF on
+# Windows) automatically -- you don't need core.autocrlf set locally
+# once this file is in place, and it removes the "whole file changed"
+# noise that CRLF/LF mismatches cause in diffs and PRs.
+
+* text=auto eol=lf
+
+# Force LF specifically for source/text files, regardless of local
+# git config, so editors/tools on any OS don't silently reintroduce CRLF.
+*.py text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+.gitignore text eol=lf
+
+# Treat generated/binary output as binary -- never line-ending-convert
+# or diff these (matches the .gitignore patterns for these types).
+*.docx binary
+*.pdf binary
+*.jpg binary
+*.jpeg binary

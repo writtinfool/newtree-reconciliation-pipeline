@@ -19,3 +19,6 @@ Comps_Report-18.pdf
 
 # Local env
 .env
+
+# Claude Code local settings (machine-specific, not shared)
+.claude/
