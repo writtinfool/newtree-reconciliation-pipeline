@@ -367,7 +367,7 @@ const doc = new Document({
             bulletParagraph(line.replace(/^[-•]\s*/, ""))
           );
           return [
-            heading("🤖  THIRD-PARTY AI INSIGHT (DEALIO PRO)", { fill: GREY }),
+            heading("🤖  THIRD-PARTY AI INSIGHT", { fill: GREY }),
             new Paragraph({ spacing: { after: 80 }, children: [
               new TextRun({ text: insight.disclaimer, italics: true, size: 16, color: GREY }),
             ]}),

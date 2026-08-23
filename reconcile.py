@@ -1195,7 +1195,7 @@ def main():
         if insight_text:
             reconciled["dealio_ai_insight"] = {
                 "text": insight_text,
-                "source": "Dealio Pro Ai -- Investment Insight (property Overview tab)",
+                "source": "Third-party AI insight tool -- Investment Insight (property Overview tab)",
                 "disclaimer": ("Automated, informational-only AI output from a third-party platform. "
                                 "This is a tool-generated opinion, not a reconciled/verified figure -- "
                                 "treat it as one more input alongside the rest of this brief, not as "
