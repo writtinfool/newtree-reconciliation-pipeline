@@ -1,0 +1,250 @@
+{
+  "_schema_version": "1.0",
+  "_schema": {
+    "fields_per_office": ["office_type", "office_name", "address", "phone", "website", "source", "verified_date", "notes"],
+    "office_types": [
+      "probate_court",
+      "assessor_recorder",
+      "tax_collector",
+      "code_enforcement_county",
+      "code_enforcement_cities",
+      "bankruptcy_court",
+      "permit_building_dept"
+    ],
+    "note": "assessor_recorder is one combined office in CA counties observed so far (Sonoma: Clerk-Recorder-Assessor; Mendocino: Assessor-County Clerk-Recorder). Do not assume this holds outside CA -- verify structure per state/county."
+  },
+  "counties": {
+    "06023": {
+      "state": "CA",
+      "county_name": "Humboldt",
+      "offices": {
+        "probate_court": {
+          "office_name": "Superior Court of California, County of Humboldt — Civil Division (Probate, Non-Guardianship, Trust & Conservatorship)",
+          "address": "421 I Street, Eureka, CA 95501 (mailing: 825 Fifth Street, Eureka, CA 95501)",
+          "phone": "(707) 445-7256, option 2",
+          "website": "humboldt.courts.ca.gov/divisions/probate-and-conservatorship",
+          "source": "County Supplement Humboldt, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        },
+        "assessor_recorder": {
+          "office_name": "Humboldt County Assessor AND Humboldt County Clerk-Recorder -- two SEPARATE offices, unlike Sonoma/Mendocino's combined Assessor-Clerk-Recorder structure",
+          "assessor": {
+            "office_name": "Humboldt County Assessor",
+            "address": "825 5th Street, Room 300, Eureka, CA 95501",
+            "phone": "(707) 445-7663 / toll-free (866) 240-0485",
+            "website": "humboldtgov.org/220/Assessor",
+            "notes": "Office closed to the public Fridays -- phone/email only that day."
+          },
+          "recorder": {
+            "office_name": "Humboldt County Clerk-Recorder",
+            "address": "825 Fifth Street, 5th Floor, Eureka, CA 95501 (Humboldt County Courthouse)",
+            "phone": "(707) 445-7593 / toll-free (888) 486-2732 (888-HUMB-REC)",
+            "email": "clerkrecordergeneral@co.humboldt.ca.us",
+            "website": "humboldtgov.org/244/Clerk-Recorder",
+            "hours": "Recording: Mon-Fri 8:30am-4:30pm, no lunch closure",
+            "notes": null
+          },
+          "source": "humboldtgov.org (official) -- Assessor page, Clerk-Recorder page, and Clerk-Recorder FAQ, cross-checked against HumboldtRecords.us and NETR Online",
+          "verified_date": "2026-08-24",
+          "notes": "Gap filled 2026-08-24. Same building (825 5th/Fifth St, Eureka) as both Assessor and Recorder, but different rooms, different phone lines -- do not merge into one contact record. County Supplement Humboldt's Word doc (Ch.2) has not yet been updated to reflect this -- canonical JSON is ahead of the narrative doc as of this update."
+        },
+        "tax_collector": {
+          "office_name": "Humboldt County Treasurer–Tax Collector",
+          "address": "825 5th Street, Room 125, Eureka, CA 95501",
+          "phone": "(707) 476-2450 / toll-free (877) 448-6829",
+          "website": "humboldtgov.org/260/Treasurer---Tax-Collector",
+          "source": "County Supplement Humboldt, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        },
+        "code_enforcement_county": {
+          "office_name": "Humboldt County Code Enforcement",
+          "address": "3015 H Street, Eureka, CA 95501",
+          "phone": null,
+          "website": "humboldtgov.org/2447/Code-Enforcement",
+          "source": "County Supplement Humboldt, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        },
+        "code_enforcement_cities": {
+          "Eureka": {
+            "office_name": "City of Eureka — Code Enforcement Division (Development Services)",
+            "address": "945 W. 14th Street, Eureka, CA 95501 (confirm intake location by phone)",
+            "website": "eurekaca.gov/301/Code-Enforcement",
+            "verified_date": "2026-07"
+          },
+          "Arcata": {
+            "office_name": "City of Arcata — Building Division / Code Enforcement",
+            "address": "736 F Street, Arcata, CA 95521",
+            "phone": "(707) 822-5951",
+            "website": "cityofarcata.org/165/Code-Enforcement",
+            "verified_date": "2026-07"
+          },
+          "Fortuna": {
+            "office_name": "Fortuna Police Department — Code Compliance Officer",
+            "address": "621 11th Street, Fortuna, CA 95540",
+            "phone": "(707) 725-7550",
+            "website": "friendlyfortuna.com/departments/police_department/services/code_compliance.php",
+            "verified_date": "2026-07"
+          }
+        },
+        "bankruptcy_court": {
+          "office_name": "U.S. Bankruptcy Court, Northern District of California — Santa Rosa Division",
+          "address": "99 South E Street, Santa Rosa, CA 95404",
+          "phone": "(888) 821-7606 (toll-free)",
+          "website": "pacer.uscourts.gov",
+          "source": "County Supplement Mendocino, Ch.2 (confirmed to cover Humboldt too)",
+          "verified_date": "2026-07",
+          "notes": "One court covers Del Norte, Humboldt, Lake, Marin, Mendocino, Napa, and Sonoma Counties -- shared across this whole regional set."
+        },
+        "permit_building_dept": {
+          "office_name": null,
+          "notes": "NOT YET RESEARCHED as a distinct entry -- likely same as code_enforcement_county/cities in most CA counties observed so far, but not confirmed distinct. Needed for reconciliation pipeline BACKLOG item 6."
+        }
+      }
+    },
+    "06097": {
+      "state": "CA",
+      "county_name": "Sonoma",
+      "offices": {
+        "probate_court": {
+          "office_name": "Superior Court of California, County of Sonoma — Probate Division",
+          "address": "625 Administration Drive, Santa Rosa, CA 95403 (effective 2026-07-27; hearings at Civil and Family Law Courthouse, 3055 Cleveland Avenue, Santa Rosa, CA 95403, Courtroom 18)",
+          "phone": "(707) 521-6650 (Probate); (707) 521-6500 (main)",
+          "website": "sonoma.courts.ca.gov/divisions/probate-division",
+          "source": "County Supplement Sonoma, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Relocated mid-2026 -- caught only via a court announcement in search results. Separate Office of the Probate Court Investigator at 600 Administration Drive, (707) 521-6586, handles conservatorship investigations only."
+        },
+        "assessor_recorder": {
+          "office_name": "Sonoma County Clerk-Recorder-Assessor",
+          "address": "585 Fiscal Drive, Santa Rosa, CA 95403",
+          "phone": "Clerk (707) 565-3800 / Recorder (707) 565-2651 / Assessor (707) 565-1888",
+          "website": "sonomacounty.gov/administrative-support-and-fiscal-services/clerk-recorder-assessor",
+          "source": "County Supplement Sonoma, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Assessor's office has disclosed 12-18 month processing delays (vs historical 6-12 months) due to wildfire impacts, staff turnover, new construction volume. Recent transfers may not yet be reflected -- cross-reference Recorder deed filings, which are faster."
+        },
+        "tax_collector": {
+          "office_name": "Sonoma County Auditor-Controller-Treasurer-Tax Collector",
+          "address": "585 Fiscal Drive, Suite 100, Santa Rosa, CA 95403",
+          "phone": "(707) 565-2281",
+          "website": "sonomacounty.gov/administrative-support-and-fiscal-services/auditor-controller-treasurer-tax-collector",
+          "source": "County Supplement Sonoma, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        },
+        "code_enforcement_county": {
+          "office_name": "Permit Sonoma (Permit and Resource Management Department) — Code Enforcement Division",
+          "address": "2550 Ventura Avenue, Santa Rosa, CA 95403",
+          "phone": "(707) 565-1900",
+          "website": "permitsonoma.org",
+          "source": "County Supplement Sonoma, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Unincorporated areas only -- outside the 9 incorporated cities. Also handles building, zoning, cannabis, grading, well/septic complaints."
+        },
+        "code_enforcement_cities": {
+          "Santa Rosa": {
+            "office_name": "City of Santa Rosa Code Enforcement Division",
+            "address": "100 Santa Rosa Avenue, Room 3, Santa Rosa, CA 95404",
+            "website": "srcity.org/785/Code-Enforcement",
+            "verified_date": "2026-07"
+          },
+          "Petaluma": {
+            "office_name": "City of Petaluma Neighborhood Preservation (Code Enforcement)",
+            "address": "11 English Street, Petaluma, CA 94952 (c/o Building)",
+            "verified_date": "2026-07"
+          }
+        },
+        "bankruptcy_court": {
+          "office_name": "U.S. Bankruptcy Court, Northern District of California — Santa Rosa Division",
+          "address": "99 South E Street, Santa Rosa, CA 95404",
+          "phone": "(888) 821-7606 (toll-free)",
+          "website": "pacer.uscourts.gov",
+          "source": "County Supplement Sonoma / Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Sonoma is the division's home seat."
+        },
+        "permit_building_dept": {
+          "office_name": "Permit Sonoma (same office as code_enforcement_county for unincorporated areas)",
+          "source": "County Supplement Sonoma, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "City-level permit depts not separately captured yet -- likely same office as each city's code enforcement listing above; confirm before relying on it."
+        }
+      }
+    },
+    "06045": {
+      "state": "CA",
+      "county_name": "Mendocino",
+      "offices": {
+        "probate_court": {
+          "office_name": "Superior Court of California, County of Mendocino — Probate Division",
+          "address": "Mendocino County Courthouse, 100 North State Street, Room 107, Ukiah, CA 95482 (branch: Ten Mile Branch, 700 South Franklin Street, Fort Bragg, CA 95437 -- status uncertain, verify before relying on it)",
+          "phone": "(707) 468-2005",
+          "website": "mendocino.courts.ca.gov/divisions/probate-division",
+          "source": "County Supplement Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        },
+        "assessor_recorder": {
+          "office_name": "Mendocino County Assessor-County Clerk-Recorder",
+          "address": "501 Low Gap Road, Room 1020, Ukiah, CA 95482 (branch: 700 S. Franklin Street, Fort Bragg, CA 95437)",
+          "phone": "(707) 234-6822 general / (707) 234-6824 Recorder / (707) 961-2237 Fort Bragg branch",
+          "website": null,
+          "source": "County Supplement Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Consolidates Assessor, Clerk, and Recorder into one office -- simpler structure than Sonoma's equivalent."
+        },
+        "tax_collector": {
+          "office_name": "Mendocino County Treasurer-Tax Collector",
+          "address": "501 Low Gap Road, Room 1060, Ukiah, CA 95482",
+          "phone": "(707) 234-6875",
+          "website": null,
+          "source": "County Supplement Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        },
+        "code_enforcement_county": {
+          "office_name": "Mendocino County Planning & Building Services — Code Enforcement Division",
+          "address": "501 Low Gap Road, Ukiah, CA 95482 (satellite: West Fir Street, Fort Bragg, CA -- confirm exact address by phone)",
+          "phone": null,
+          "website": "mendocinocounty.gov/government/planning-building-services/code-enforcement",
+          "source": "County Supplement Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Consolidates Planning, Building, and Code Enforcement into one department. City-level code enforcement for Ukiah, Willits, and Fort Bragg individually NOT independently verified -- confirm each before relying on it."
+        },
+        "code_enforcement_cities": {},
+        "bankruptcy_court": {
+          "office_name": "U.S. Bankruptcy Court, Northern District of California — Santa Rosa Division",
+          "address": "99 South E Street, Santa Rosa, CA 95404",
+          "phone": "(888) 821-7606 (toll-free)",
+          "website": "pacer.uscourts.gov",
+          "source": "County Supplement Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": "Same regional court as Humboldt and Sonoma."
+        },
+        "permit_building_dept": {
+          "office_name": "Mendocino County Planning & Building Services (same office as code_enforcement_county)",
+          "source": "County Supplement Mendocino, Ch.2",
+          "verified_date": "2026-07",
+          "notes": null
+        }
+      }
+    },
+    "22071": {
+      "state": "LA",
+      "county_name": "Orleans Parish",
+      "offices": {
+        "note": "NOT YET RESEARCHED. Next in queue -- live JV deal (84 Inlet Dr context) and reconciliation pipeline's BACKLOG.md item 6 both need this. Pipeline's 'county assessor automation' for Orleans is reconciliation logic against manually-supplied Property Profile PDFs, NOT a verified office directory entry -- confirmed via repo search 2026-08-24, no office contact data exists in code yet."
+      }
+    },
+    "22103": {
+      "state": "LA",
+      "county_name": "St. Tammany Parish",
+      "offices": {
+        "note": "NOT YET RESEARCHED. Same status as Orleans Parish above -- next in queue, tied to the live 84 Inlet Dr deal."
+      }
+    }
+  }
+}
