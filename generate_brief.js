@@ -15,12 +15,22 @@ const {
   PageOrientation, VerticalAlign,
 } = require("docx");
 
-const inPath = process.argv[2];
-const outPath = process.argv[3];
-const companyName = process.argv[4] || "[Your Company Name]";
+const rawArgs = process.argv.slice(2);
+const includeContactInfo = rawArgs.includes("--include-contact-info");
+const positional = rawArgs.filter(a => a !== "--include-contact-info");
+const inPath = positional[0];
+const outPath = positional[1];
+const companyName = positional[2] || "[Your Company Name]";
 
 if (!inPath || !outPath) {
-  console.error("Usage: node generate_brief.js <reconciled.json> <output.docx> [\"Company Name\"]");
+  console.error("Usage: node generate_brief.js <reconciled.json> <output.docx> [\"Company Name\"] [--include-contact-info]");
+  console.error("");
+  console.error("  --include-contact-info   Print owner name, phone(s), and email(s) in the brief.");
+  console.error("                           OFF BY DEFAULT: this is a policy choice made per client/deal,");
+  console.error("                           not a global default -- pass it only when you've decided this");
+  console.error("                           specific report should carry contact data to the client. DNC/");
+  console.error("                           litigator-flagged numbers are always labeled as such, never");
+  console.error("                           presented as callable.");
   process.exit(1);
 }
 
@@ -72,6 +82,7 @@ function heading(text, opts = {}) {
 
 function labelValueRow(label, value, opts = {}) {
   return new TableRow({
+    cantSplit: true,
     children: [
       new TableCell({
         width: { size: 3600, type: WidthType.DXA },
@@ -179,7 +190,11 @@ const doc = new Document({
             labelValueRow("County Building Area (total structure)", countyBuildingArea ? `${countyBuildingArea} sqft` : "N/A", countyBuildingArea && countyBuildingArea != sqft ? { color: RED } : {}),
             labelValueRow("Bed / Bath / Lot", `${beds} bed / ${baths} bath, single family, ${lot} sqft lot`),
             labelValueRow("Year Built", yearBuiltDisplay, yearBuiltField && yearBuiltField.confidence !== "agreed" ? { color: RED } : {}),
-            labelValueRow("Last Recorded Sale", `${lastSaleDisplay}${lastSale ? " (" + (data.raw_sources.comps_report?.last_sold_date || "") + ")" : ""}`),
+            labelValueRow("Last Recorded Sale", (() => {
+            if (!lastSale) return lastSaleDisplay;
+            const saleDate = data.raw_sources.comps_report?.last_sold_date || data.raw_sources.lead_csv?.last_sales_date;
+            return saleDate ? `${lastSaleDisplay} (${saleDate})` : lastSaleDisplay;
+          })()),
             labelValueRow("Current AVM (automated valuation)", money(avm)),
             labelValueRow("Estimated Market Value", money(marketValue)),
             labelValueRow("Tax-Assessed Value", money(taxAssessed)),
@@ -189,6 +204,36 @@ const doc = new Document({
         new Paragraph({ spacing: { before: 160 }, children: [
           new TextRun({ text: "Every figure above is either confirmed across independent data sources or resolved through the verification hierarchy described in the Data Verification section below — never taken from a single unverified source.", italics: true, size: 17, color: GREY }),
         ]}),
+
+        // ---- Contact & Outreach (opt-in only -- pass --include-contact-info).
+        // Excluded by default: this data stays internal to the CRM/call list
+        // unless a specific decision has been made to share it with this
+        // client for this deal. --------------------------------------------
+        ...(() => {
+          if (!includeContactInfo) return [];
+          const lc = data.raw_sources.lead_csv;
+          if (!lc) return [];
+          const ownerName = lc.owner_name || "N/A";
+          const contacts = lc.contacts || [];
+          const additional = lc.additional_contacts || [];
+          const rows = [labelValueRow("Owner of Record", ownerName)];
+          contacts.forEach((c, i) => {
+            const label = `Phone ${i + 1}${c.type ? ` (${c.type})` : ""}`;
+            const flags = [c.dnc ? "DNC" : null, c.litigator ? "Litigator" : null].filter(Boolean);
+            rows.push(labelValueRow(label, c.phone + (flags.length ? `  — ${flags.join(", ")}, do not call` : ""), flags.length ? { color: RED, bold: true } : {}));
+            if (c.email) rows.push(labelValueRow(`Email (${label})`, c.email));
+          });
+          additional.forEach(c => {
+            rows.push(labelValueRow(`Additional contact`, [c.name, c.email, c.phone].filter(Boolean).join(" — ")));
+          });
+          return [
+            heading("☎️  CONTACT & OUTREACH", { fill: GREY }),
+            new Table({ width: { size: 9800, type: WidthType.DXA }, rows }),
+            new Paragraph({ spacing: { before: 100 }, children: [
+              new TextRun({ text: "Numbers marked DNC or Litigator must be excluded from any outbound dialer/call list regardless of this report. This section was included because this specific report was generated with --include-contact-info; the default behavior of this tool omits it.", italics: true, size: 15, color: GREY }),
+            ]}),
+          ];
+        })(),
 
         // ---- Comps & ARV Analysis (optional -- present if reconcile.py had a
         // comps PDF with a parseable comp list) --------------------------

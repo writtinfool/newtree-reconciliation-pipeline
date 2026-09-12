@@ -290,9 +290,90 @@ def compute_arv(comps, subject_sqft):
     }
 
 
+def compute_collateral_analysis(valuation_bases, lead_csv):
+    """
+    Equity/LTV picture for treating the subject property as loan collateral.
+
+    Uses whichever senior-lien balance is best available (actual estimated
+    current balance if the source has amortized it forward, else the
+    original loan amount) against every valuation basis on hand -- not just
+    the AVM -- so a reader can see how the picture changes depending which
+    value they trust. Returns None if there's no loan and no valuation to
+    compare it to (nothing to compute).
+    """
+    if not lead_csv:
+        return None
+
+    balance = lead_csv.get("estimated_mortgage_balance") or lead_csv.get("loan_amount")
+    if not balance:
+        return None
+
+    bases = {
+        "avm": valuation_bases.get("comps_avm") or valuation_bases.get("csv_avm"),
+        "market_value": valuation_bases.get("csv_market_value"),
+        "wholesale_value": lead_csv.get("wholesale_value"),
+    }
+
+    equity_by_basis = {}
+    for basis_name, value in bases.items():
+        if not value:
+            continue
+        equity_by_basis[basis_name] = {
+            "value": value,
+            "equity_dollars": round(value - balance, 2),
+            "equity_pct": round((value - balance) / value * 100, 1),
+            "ltv_pct": round(balance / value * 100, 1),
+        }
+
+    if not equity_by_basis:
+        return None
+
+    # AVM is the preferred basis for the headline rating when available;
+    # otherwise fall back to whatever basis we do have.
+    primary = equity_by_basis.get("avm") or next(iter(equity_by_basis.values()))
+    ltv = primary["ltv_pct"]
+    if ltv >= 100:
+        risk_rating = "HIGH RISK -- no equity cushion"
+    elif ltv >= 80:
+        risk_rating = "ELEVATED RISK -- thin equity cushion"
+    elif ltv >= 65:
+        risk_rating = "MODERATE -- within typical hard-money ATV/ARV range"
+    else:
+        risk_rating = "LOWER RISK -- meaningful equity cushion"
+
+    list_price = lead_csv.get("mls_current_list_price")
+    list_price_vs_payoff = (
+        round(list_price - balance, 2) if (list_price and balance) else None
+    )
+
+    return {
+        "senior_lien_balance_used": balance,
+        "balance_basis": (
+            "estimated_mortgage_balance" if lead_csv.get("estimated_mortgage_balance")
+            else "loan_amount"
+        ),
+        "equity_by_basis": equity_by_basis,
+        "risk_rating": risk_rating,
+        "list_price_vs_payoff": list_price_vs_payoff,
+    }
+
+
 # --------------------------------------------------------------------------
 # Parsing: Skip-trace lead export CSV
 # --------------------------------------------------------------------------
+
+# Boolean distress/investor status columns present on this export format.
+# FreeAndClear and HighEquity are handled separately above (they already
+# had dedicated top-level fields before this list existed) but are also
+# included here so status_flags is a complete, self-contained picture.
+DISTRESS_STATUS_FLAG_COLUMNS = [
+    "AbsenteeOwner", "ActiveInvestorOwned", "ActiveListing", "BoredInvestor",
+    "CashBuyer", "DelinquentTaxActivity", "Flipped", "Foreclosures",
+    "FreeAndClear", "HighEquity", "LongTermOwner", "LowEquity",
+    "PotentiallyInherited", "PreForeclosure", "UpsideDown", "Vacancy",
+    "ZombieProperty",
+]
+
 
 def parse_lead_csv(path):
     """Extract key fields + contact/compliance data from the lead export CSV."""
@@ -336,23 +417,69 @@ def parse_lead_csv(path):
     data["number_of_loans"] = num(row.get("NumberOfLoans"))
     data["loan_amount"] = money(row.get("LoanAmount"))
     data["estimated_mortgage_balance"] = money(row.get("EstimatedMortgageBalance"))
+    data["estimated_mortgage_payment"] = money(row.get("EstimatedMortgagePayment"))
     data["loan_recording_date"] = row.get("RecordingDate")
+    data["loan_maturity_date"] = row.get("MaturityDate") or None
     data["loan_lender_name"] = row.get("LenderName")
+    data["loan_type"] = row.get("LoanType") or None
+    data["mortgage_interest_rate"] = num(row.get("MortgageInterestRate"))
     data["ltv_percent"] = row.get("LTV")
     data["free_and_clear"] = row.get("FreeAndClear") == "1"
     data["high_equity"] = row.get("HighEquity") == "1"
+    data["last_sale_buyer"] = row.get("Buyer") or None
+    data["last_sale_seller"] = row.get("Seller") or None
+
+    # --- Site / structure detail (descriptive -- not conflict-checked
+    # against other sources, just surfaced as-is from this export) -------
+    data["price_per_sqft"] = money(row.get("PricePerSqFt"))
+    data["county"] = row.get("County") or None
+    data["subdivision"] = row.get("Subdivision") or None
+    data["zoning"] = row.get("Zoning") or None
+    # This export's "Stories" column has been observed reporting 0 for
+    # known multi-story homes (a default/placeholder, not a real value) --
+    # treat 0 as "not reported" rather than surfacing it as fact.
+    stories_raw = row.get("Stories") or None
+    data["stories"] = None if stories_raw == "0" else stories_raw
+    data["exterior"] = row.get("Exterior") or None
+    data["roof"] = row.get("Roof") or None
+    data["roof_shape"] = row.get("RoofShape") or None
+    data["heating"] = row.get("Heating") or None
+    data["air_conditioning"] = row.get("AirConditioning") or None
+    data["fireplace"] = row.get("Fireplace") or None
+    data["garage"] = row.get("Garage") or None
+    data["school_district"] = row.get("SchoolDistrict") or None
+    data["hoa"] = row.get("HOA") == "True"
+    data["hoa_fee"] = num(row.get("HOAFee"))
+    data["hoa_fee_frequency"] = row.get("HOAFeeFrequency") or None
+    data["tax_amount"] = money(row.get("TaxAmount"))
+
+    # --- Investor/distress scoring, if present in this export -----------
+    data["retail_score"] = row.get("RetailScore") or None
+    data["rental_score"] = row.get("RentalScore") or None
+    data["wholesale_score"] = row.get("WholesaleScore") or None
 
     # --- Live/recent MLS listing data embedded in the same export -------
     data["mls_current_status"] = row.get("MLS_Curr_Status") or None
     data["mls_current_list_price"] = money(row.get("MLS_Curr_ListPrice"))
+    data["mls_current_list_date"] = row.get("MLS_Curr_ListDate") or None
     data["mls_current_beds"] = num(row.get("MLS_Curr_Beds"))
     data["mls_current_baths"] = num(row.get("MLS_Curr_Baths"))
+    data["mls_current_agent_name"] = row.get("MLS_Curr_ListAgentName") or None
+    data["mls_current_agent_phone"] = row.get("MLS_Curr_ListAgentPhone") or None
+    data["mls_current_agent_email"] = row.get("MLS_Curr_ListAgentEmail") or None
+    data["mls_current_agent_office"] = row.get("MLS_Curr_ListAgentOffice") or None
+    data["mls_prev_status"] = row.get("MLS_Prev_Status") or None
+    data["mls_prev_list_date"] = row.get("MLS_Prev_ListDate") or None
+    data["mls_prev_sold_date"] = row.get("MLS_Prev_SoldDate") or None
+    data["mls_prev_days_on_market"] = num(row.get("MLS_Prev_DaysOnMarket"))
+    data["mls_prev_list_price"] = money(row.get("MLS_Prev_ListPrice"))
+    data["mls_prev_sale_price"] = money(row.get("MLS_Prev_SalePrice"))
+    data["mls_prev_list_agent_name"] = row.get("MLS_Prev_ListAgentName") or None
+    data["mls_prev_sold_agent_name"] = row.get("MLS_Prev_SoldAgentName") or None
     data["mls_prev_beds"] = num(row.get("MLS_Prev_Beds"))
     data["mls_prev_baths"] = num(row.get("MLS_Prev_Baths"))
     desc = row.get("MLS_Curr_Description", "") or row.get("MLS_Prev_Description", "") or ""
     data["mls_description_text"] = desc or None
-    data["mls_current_list_date"] = row.get("MLS_Curr_ListDate") or None
-    data["mls_prev_list_date"] = row.get("MLS_Prev_ListDate") or None
     data["mls_description_bedbath"] = None
     m = re.search(r"(\d+)[\s-]*[Bb]edroom.{0,20}?(\d+(?:\.\d+)?)[\s-]*[Bb]ath", desc)
     if m:
@@ -362,7 +489,25 @@ def parse_lead_csv(path):
     m3 = re.search(r"([\d,]+)\s+total square feet", desc, re.I)
     data["mls_total_area_sqft"] = int(m3.group(1).replace(",", "")) if m3 else None
 
+    # --- Distress / investor status flags --------------------------------
+    # Read straight off the export's boolean columns. Kept as a flat dict
+    # rather than individual top-level fields since the set is long and
+    # growing -- this is additive, so new flag columns just need adding to
+    # DISTRESS_STATUS_FLAG_COLUMNS, no other code changes required.
+    data["status_flags"] = {
+        flag_name: row.get(flag_name) == "1" for flag_name in DISTRESS_STATUS_FLAG_COLUMNS
+    }
+    raw_auction_date = row.get("AuctionDate") or None
+    # This export format uses 1/1/1900 as a null-date sentinel for "no
+    # auction scheduled" rather than leaving the column blank.
+    data["auction_date"] = None if raw_auction_date == "1/1/1900" else raw_auction_date
+    data["last_notice_date"] = row.get("LastNoticeDate") or None
+
     # --- Contact / compliance block -------------------------------------
+    # Contact1's phones are the actual dial targets (Contact2/3 on this
+    # export format are typically alternate name spellings or household
+    # members surfaced with an email but no phone -- kept as "additional
+    # contacts", not merged into the callable-numbers compliance screen).
     contacts = []
     for i in (1, 2, 3):
         phone = row.get(f"Contact1Phone_{i}")
@@ -383,6 +528,16 @@ def parse_lead_csv(path):
          ("+Litigator" if c["litigator"] else "")}
         for c in contacts if c["dnc"] or c["litigator"]
     ]
+    additional_contacts = []
+    for i in (2, 3, 4, 5, 6, 7, 8):
+        name = row.get(f"Contact{i}Name")
+        if name:
+            additional_contacts.append({
+                "name": name,
+                "email": row.get(f"Contact{i}Email_1") or None,
+                "phone": row.get(f"Contact{i}Phone_1") or None,
+            })
+    data["additional_contacts"] = additional_contacts
 
     return data
 
@@ -918,6 +1073,63 @@ def reconcile(sources, public_override=None):
                 valuations[f"county_official_{k}"] = po[k]
 
     reconciled["valuation_bases"] = valuations
+
+    # --- Collateral/equity analysis (if a loan balance is on record) ------
+    collateral = compute_collateral_analysis(valuations, by_name.get("lead_csv"))
+    if collateral:
+        reconciled["collateral_analysis"] = collateral
+
+    # --- Property details (descriptive, not conflict-checked -- surfaced
+    # as-is from whichever source has them, currently just the CSV) -------
+    if "lead_csv" in by_name:
+        lc = by_name["lead_csv"]
+        detail_keys = [
+            "price_per_sqft", "county", "subdivision", "zoning", "stories",
+            "exterior", "roof", "roof_shape", "heating", "air_conditioning",
+            "fireplace", "garage", "school_district", "hoa", "hoa_fee",
+            "hoa_fee_frequency", "tax_amount",
+        ]
+        reconciled["property_details"] = {k: lc.get(k) for k in detail_keys if lc.get(k) is not None}
+
+        loan_keys = [
+            "number_of_loans", "loan_amount", "estimated_mortgage_balance",
+            "estimated_mortgage_payment", "loan_recording_date", "loan_maturity_date",
+            "loan_lender_name", "loan_type", "mortgage_interest_rate", "ltv_percent",
+        ]
+        reconciled["financing_details"] = {k: lc.get(k) for k in loan_keys if lc.get(k) is not None}
+
+        mls_keys = [k for k in lc if k.startswith("mls_")]
+        reconciled["mls_details"] = {k: lc[k] for k in mls_keys if lc.get(k) is not None}
+
+        if lc.get("last_sale_buyer") or lc.get("last_sale_seller"):
+            reconciled["last_sale_parties"] = {
+                "buyer": lc.get("last_sale_buyer"),
+                "seller": lc.get("last_sale_seller"),
+            }
+
+        for score_key in ("retail_score", "rental_score", "wholesale_score"):
+            if lc.get(score_key):
+                reconciled.setdefault("exit_scores", {})[score_key] = lc[score_key]
+
+    # --- Distress / investor status flags ---------------------------------
+    if "lead_csv" in by_name:
+        sf = by_name["lead_csv"].get("status_flags", {})
+        reconciled["status_flags"] = sf
+        reconciled["auction_date"] = by_name["lead_csv"].get("auction_date")
+        reconciled["last_notice_date"] = by_name["lead_csv"].get("last_notice_date")
+        if sf.get("PreForeclosure") and sf.get("UpsideDown"):
+            reconciled["flags"].append({
+                "flag": "DISTRESSED_UPSIDE_DOWN_LEAD",
+                "note": (
+                    f"This property is flagged both pre-foreclosure (last notice "
+                    f"{by_name['lead_csv'].get('last_notice_date') or 'date unknown'}) and "
+                    f"upside-down (loan balance exceeds value). This points to a seller who "
+                    f"may be receptive to a short sale, subject-to, or negotiated-payoff "
+                    f"structure rather than a conventional equity purchase. Any offer "
+                    f"strategy needs lender/servicer engagement, not just a seller "
+                    f"negotiation -- verify the current payoff and arrears before proceeding."
+                ),
+            })
 
     # --- ARV analysis from comps list (if available) ----------------------
     if "comps_report" in by_name and by_name["comps_report"].get("comps"):

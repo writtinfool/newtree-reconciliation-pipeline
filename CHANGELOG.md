@@ -1,5 +1,79 @@
 # Changelog
 
+## 2026-09-12
+### Added
+- **Three report perspectives from one reconciled.json.** Added
+  `fact_sheet/build_fact_sheet.js` (neutral, comprehensive property fact
+  sheet -- everything on file, no strategy interpretation) and
+  `collateral_summary/build_collateral_summary.js` (lender-perspective
+  collateral risk assessment -- LTV against every valuation basis, a risk
+  rating, an underwriting recommendation) as siblings to the existing
+  `generate_brief.js`. Same brand palette (NAVY/ORANGE/GREEN/RED/GREY),
+  same reconciled.json input, one script per document type per this repo's
+  existing convention (see comps_template/, workflow_doc/) -- no shared lib
+  introduced. Prompted by building one-off versions of these three views
+  for a client property (113 Indigo Park Pl, Easley SC -- a pre-foreclosure,
+  upside-down lead) and recognizing the pattern was worth generalizing into
+  the pipeline rather than staying ad hoc.
+- **`reconcile.py`: collateral/equity analysis.** New
+  `compute_collateral_analysis()` computes equity-dollars, equity-%, and LTV
+  against every available valuation basis (AVM, market value, wholesale
+  value) using whichever loan balance is best available (estimated current
+  balance, falling back to original amount), plus a HIGH/ELEVATED/MODERATE/
+  LOWER risk rating and list-price-vs-payoff gap. Stored as
+  `reconciled.collateral_analysis`; `None` when there's no loan balance or no
+  valuation basis to compare it to, so `build_collateral_summary.js` can
+  refuse to guess rather than print a misleading report.
+- **`reconcile.py`: distress/motivation flag.** New
+  `DISTRESSED_UPSIDE_DOWN_LEAD` flag fires when the CSV's PreForeclosure and
+  UpsideDown columns are both true, noting the seller may be receptive to a
+  short sale / subject-to / negotiated payoff. Uses the existing generic
+  `flags` list, so it shows up in `generate_brief.js`'s Data Verification
+  section automatically -- no template change needed there.
+- **`parse_lead_csv()` extended** to capture fields the new views need that
+  weren't previously read off this export format: full financing terms
+  (loan type, interest rate, maturity date, estimated payment), site/
+  structure detail (exterior, roof, heating, cooling, fireplace, garage,
+  HOA, tax amount, subdivision, zoning, county), last-sale buyer/seller,
+  full current+prior MLS listing detail (agent name/phone/email/office,
+  list dates, days on market), all 16 distress/investor status flags (not
+  just FreeAndClear/HighEquity), auction date, last notice date, retail/
+  rental/wholesale scores when the export provides them, and Contact2-8
+  names/emails as `additional_contacts`. Surfaced into reconciled.json as
+  `property_details`, `financing_details`, `mls_details`, `status_flags`,
+  `exit_scores`, and `last_sale_parties`.
+- Two data-quality normalizations discovered while wiring this up, applied
+  at parse time so they don't need repeating in every report generator:
+  this export's `AuctionDate` uses `1/1/1900` as a null-date sentinel
+  (normalized to `None`/"not scheduled"), and its `Stories` column has been
+  observed reporting `0` for known multi-story homes (normalized to `None`/
+  "not reported" rather than surfaced as fact).
+
+### Changed -- contact info policy (deliberate, not a default flip)
+- All three generators now accept `--include-contact-info`, off by default,
+  gating a Contact & Outreach / Ownership & Contact section. Previously
+  `generate_brief.js` simply never printed contact data at all (see its
+  original file-header comment: "No contact/PII data is included -- that
+  stays internal to the CRM / call list"). That blanket exclusion is now a
+  per-report choice instead of a hardcoded one: the 113 Indigo Park Pl
+  client reports needed contact info in the client's hands, but skip-traced
+  contact data still has real reuse value internally (dialer lists, CRM)
+  that a report generator shouldn't silently duplicate everywhere by
+  default. Decided 2026-09-12 per Harold: this is an intentional policy and
+  design change, not an oversight being corrected -- default stays off,
+  opt in per report when a specific client/deal calls for it. DNC/litigator
+  flags are always shown alongside a number when this section is printed,
+  regardless of the flag.
+
+### Fixed
+- `generate_brief.js`: "Last Recorded Sale" showed a stray empty `()` when
+  no Comps Report PDF was supplied (only a CSV). Now falls back to the
+  CSV's own sale date and omits the parens entirely when no date is
+  available from either source.
+- All three generators: table rows could split across a page break
+  mid-label (most visible in the Loan-to-Value Analysis table's longer
+  scenario labels). Added `cantSplit: true` to every label/value table row.
+
 ## 2026-08-02
 ### Added
 - Demographics & Economics section: Census geocoder (free) + ACS
