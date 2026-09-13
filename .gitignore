@@ -9,7 +9,7 @@ __pycache__/
 *.pdf
 *.jpg
 *.jpeg
-reconciled_*.json
+reconciled*.json
 brief_*.json
 
 # Test/sample fixtures used during development -- not part of the pipeline itself
