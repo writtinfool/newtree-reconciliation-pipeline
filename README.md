@@ -57,6 +57,24 @@ Any of `--profile` / `--comps` / `--csv` / `--public-override` / `--address` /
 `--ai-insight` may be omitted -- the tool reconciles with whatever it's given
 and notes what's missing rather than failing.
 
+### Running all three reports for a client (PowerShell)
+
+`run_client_reports.ps1` wraps the four commands above into one call. It's a
+generic, reusable entry point -- not tied to any one client -- so this is the
+normal way to produce a client's report set, rather than writing a fresh
+one-off script per client:
+
+```powershell
+.\run_client_reports.ps1 -Csv "G:\My Drive\...\Clients\<Client>\lpp-export-<uuid>\lpp-export-<uuid>.csv"
+
+# optional: explicit output dir, custom company name, contact info on
+.\run_client_reports.ps1 -Csv $csv -OutDir $outDir -CompanyName "Newtree Capital Resources LLC" -IncludeContactInfo
+```
+
+`-OutDir` defaults to the CSV's own folder, and `reconciled.json` is written
+there too (not into the repo) since export folders are meant to be
+self-contained per deal.
+
 ### Contact info policy (opt-in, off by default)
 
 None of the three generators print owner contact info (name, phone, email,
