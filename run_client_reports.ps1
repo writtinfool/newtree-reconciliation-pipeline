@@ -33,7 +33,15 @@ param(
     [switch]$IncludeContactInfo,
 
     # Also convert each generated docx to PDF via LibreOffice headless.
-    [switch]$Pdf
+    [switch]$Pdf,
+
+    # Which python to run reconcile.py with. Defaults to whatever "python" resolves
+    # to on PATH -- but a fresh powershell.exe (e.g. one spawned by report_ui.py)
+    # does its own independent PATH lookup and can land on a different install than
+    # you expect if more than one Python is on this machine. Pass an explicit path
+    # (or have a caller pass sys.executable) if you hit a ModuleNotFoundError here
+    # that "python -c '...'" doesn't reproduce in your own shell.
+    [string]$PythonExe = "python"
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,7 +75,13 @@ $reconciled = Join-Path $OutDir "reconciled.json"
 $contactArg = if ($IncludeContactInfo) { @("--include-contact-info") } else { @() }
 $docxPaths = @()
 
-python reconcile.py --csv "$Csv" --out "$reconciled"
+& $PythonExe -c "import pdfplumber" 2>$null
+if (-not $?) {
+    throw "pdfplumber is not installed for '$PythonExe' (resolved to $(& $PythonExe -c 'import sys; print(sys.executable)' 2>$null)). " +
+          "Run: $PythonExe -m pip install --user pdfplumber -- or pass -PythonExe with the interpreter that has it."
+}
+
+& $PythonExe reconcile.py --csv "$Csv" --out "$reconciled"
 if (-not $?) { throw "reconcile.py failed" }
 
 $brief = Join-Path $OutDir "01_Investment_Opportunity_Brief.docx"
@@ -82,19 +96,42 @@ $docxPaths += $factSheet
 
 $collateral = Join-Path $OutDir "03_Loan_Collateral_Summary.docx"
 node collateral_summary/build_collateral_summary.js $reconciled $collateral $CompanyName @contactArg
-if (-not $?) { throw "build_collateral_summary.js failed" }
-# Only produced when reconcile.py had enough data to compute collateral_analysis --
-# the generator exits without writing a file otherwise, so don't assume it's there.
-if (Test-Path $collateral) { $docxPaths += $collateral }
+# Exits non-zero (by design, not an error) when reconcile.py didn't have enough data
+# to compute collateral_analysis -- a loan balance AND at least one valuation basis.
+# Only treat it as a real failure if it also didn't produce the file.
+if (-not $? -and -not (Test-Path $collateral)) {
+    Write-Warning "build_collateral_summary.js: no collateral summary produced (insufficient data) -- see message above."
+} elseif (Test-Path $collateral) {
+    $docxPaths += $collateral
+}
 
-if ($Pdf) {
+if ($Pdf -and $docxPaths.Count -gt 0) {
     $soffice = Find-Soffice
     if (-not $soffice) {
         Write-Warning "LibreOffice (soffice) not found -- skipping PDF conversion. Install it or pass its path via PATH."
     } else {
-        foreach ($docxPath in $docxPaths) {
-            & $soffice --headless --convert-to pdf --outdir "$OutDir" "$docxPath" | Out-Null
-            if (-not $?) { throw "PDF conversion failed for $docxPath" }
+        # One invocation for all files, not one per file -- soffice --headless launches a
+        # background instance that locks its user profile, so firing it off repeatedly in
+        # a loop races on that lock and can silently no-op for all but the last file.
+        #
+        # Even a single invocation is flaky in practice -- soffice --headless has a known
+        # habit of intermittently failing (busy profile lock, slow startup) when launched
+        # right after a previous conversion, so retry a couple of times before giving up.
+        $maxAttempts = 3
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            & $soffice --headless --convert-to pdf --outdir "$OutDir" @docxPaths | Out-Null
+            $allProduced = $true
+            foreach ($docxPath in $docxPaths) {
+                $expectedPdf = [System.IO.Path]::ChangeExtension($docxPath, ".pdf")
+                if (-not (Test-Path $expectedPdf)) { $allProduced = $false }
+            }
+            if ($allProduced) { break }
+            if ($attempt -lt $maxAttempts) {
+                Write-Warning "PDF conversion attempt $attempt of $maxAttempts didn't produce all files -- retrying..."
+                Start-Sleep -Seconds 3
+            } else {
+                throw "PDF conversion failed after $maxAttempts attempts"
+            }
         }
     }
 }
