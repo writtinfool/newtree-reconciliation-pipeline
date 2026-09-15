@@ -75,6 +75,11 @@ one-off script per client:
 there too (not into the repo) since export folders are meant to be
 self-contained per deal.
 
+Add `-Pdf` to also convert each generated docx to PDF via a local LibreOffice
+headless install (`soffice --headless --convert-to pdf`). This is a direct
+render of the docx as authored -- use it instead of opening the docx in
+Google Docs, whose own docx importer can badly mangle table layout.
+
 ### Contact info policy (opt-in, off by default)
 
 None of the three generators print owner contact info (name, phone, email,
@@ -111,6 +116,61 @@ Collateral Valuation -> Existing Senior Lien Position -> Loan-to-Value
 Analysis -> Distress Status Affecting Title & Timing -> Condition Notes ->
 Underwriting Recommendation -> [Ownership & Contact, opt-in] -> Limitations &
 Disclaimer.
+
+## Lender Matching (separate from the reconciliation pipeline above)
+
+`lender_matching/` reads the Notion "Lender Directory" database (the
+reconciled canonical lender list, see CHANGELOG.md 2026-09-13) and matches a
+lead's criteria against it.
+
+```bash
+python3 lender_matching/export_lenders.py         # pulls latest from Notion -> lenders.json
+python3 lender_matching/match_lender.py --loan-type dscr --state NY --credit-score 660 --loan-amount 350000
+```
+
+`export_lenders.py` needs its own Notion integration token (`NOTION_API_KEY`
+in `.env`) -- this is separate from the OAuth connector used inside a Claude
+session, since this script is meant to run unattended (e.g. a scheduled
+task). See the docstring at the top of `export_lenders.py` for the one-time
+setup steps. `NOTION_LENDERS_DATA_SOURCE_ID` is already pre-filled with the
+current database's id.
+
+`match_lender.py` filters conservatively -- see its docstring for exactly
+what counts as a disqualifier vs. an "unconfirmed, not excluded" gap. It
+never silently drops lenders flagged `Needs Verification` in Notion; it
+always marks them in the output instead. It returns every lender that
+qualifies, not just one -- the point is a shortlist to reach out to, not a
+single recommendation.
+
+`lender_matching/broker_footprint.json` lists the states Newtree cannot
+broker in directly (source: the company's BiggerPockets business profile).
+When `--state` is one of those, `match_lender.py` automatically restricts
+results to `Referral Marketplace`-type lenders (SBLS, South End Capital) --
+the only path to still help a client in a state Harold isn't licensed to
+broker in himself -- and prints a note explaining why direct lenders were
+excluded from that particular search.
+
+### Desktop UI
+
+```bash
+python3 lender_matching/lender_ui.py
+```
+
+A Tkinter window wrapping both scripts: a "Refresh from Notion" button and a
+search form (loan type / state / credit score / loan amount) that lists
+every matching lender in a table, with a "Copy Results" button for pasting
+a plain-text list elsewhere. No server to run; works offline once
+`lenders.json` exists.
+
+A desktop shortcut ("Newtree Lender Matching") launches it directly via
+`run_lender_ui.bat` (repo root) -- no terminal needed day to day. The batch
+file calls `pythonw.exe` explicitly (no console window) at a hardcoded path
+matching this machine's Python 3.14 install; update that path if Python
+ever gets reinstalled elsewhere.
+
+Not yet built: automatic scheduled refresh of `lenders.json` (logged in
+OPEN_ITEMS.md), and folding this into `run_client_reports.ps1` as a fourth
+report type.
 
 ## Setup
 

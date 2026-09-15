@@ -13,6 +13,11 @@
 
 .EXAMPLE
     .\run_client_reports.ps1 -Csv $csv -OutDir $outDir -IncludeContactInfo
+
+.EXAMPLE
+    # Also emit PDFs (converted from the docx via LibreOffice headless -- this
+    # renders the tables correctly, unlike Google Docs' own docx importer).
+    .\run_client_reports.ps1 -Csv $csv -Pdf
 #>
 
 param(
@@ -25,7 +30,10 @@ param(
 
     [string]$CompanyName = "Newtree Capital Resources LLC",
 
-    [switch]$IncludeContactInfo
+    [switch]$IncludeContactInfo,
+
+    # Also convert each generated docx to PDF via LibreOffice headless.
+    [switch]$Pdf
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,19 +51,52 @@ if (-not (Test-Path $OutDir)) {
     throw "Output directory not found: $OutDir"
 }
 
+function Find-Soffice {
+    $cmd = Get-Command soffice -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($candidate in @(
+        "C:\Program Files\LibreOffice\program\soffice.exe",
+        "C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+    )) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
+}
+
 $reconciled = Join-Path $OutDir "reconciled.json"
 $contactArg = if ($IncludeContactInfo) { @("--include-contact-info") } else { @() }
+$docxPaths = @()
 
 python reconcile.py --csv "$Csv" --out "$reconciled"
 if (-not $?) { throw "reconcile.py failed" }
 
-node generate_brief.js $reconciled (Join-Path $OutDir "01_Investment_Opportunity_Brief.docx") $CompanyName @contactArg
+$brief = Join-Path $OutDir "01_Investment_Opportunity_Brief.docx"
+node generate_brief.js $reconciled $brief $CompanyName @contactArg
 if (-not $?) { throw "generate_brief.js failed" }
+$docxPaths += $brief
 
-node fact_sheet/build_fact_sheet.js $reconciled (Join-Path $OutDir "02_Property_Fact_Sheet.docx") $CompanyName @contactArg
+$factSheet = Join-Path $OutDir "02_Property_Fact_Sheet.docx"
+node fact_sheet/build_fact_sheet.js $reconciled $factSheet $CompanyName @contactArg
 if (-not $?) { throw "build_fact_sheet.js failed" }
+$docxPaths += $factSheet
 
-node collateral_summary/build_collateral_summary.js $reconciled (Join-Path $OutDir "03_Loan_Collateral_Summary.docx") $CompanyName @contactArg
+$collateral = Join-Path $OutDir "03_Loan_Collateral_Summary.docx"
+node collateral_summary/build_collateral_summary.js $reconciled $collateral $CompanyName @contactArg
 if (-not $?) { throw "build_collateral_summary.js failed" }
+# Only produced when reconcile.py had enough data to compute collateral_analysis --
+# the generator exits without writing a file otherwise, so don't assume it's there.
+if (Test-Path $collateral) { $docxPaths += $collateral }
+
+if ($Pdf) {
+    $soffice = Find-Soffice
+    if (-not $soffice) {
+        Write-Warning "LibreOffice (soffice) not found -- skipping PDF conversion. Install it or pass its path via PATH."
+    } else {
+        foreach ($docxPath in $docxPaths) {
+            & $soffice --headless --convert-to pdf --outdir "$OutDir" "$docxPath" | Out-Null
+            if (-not $?) { throw "PDF conversion failed for $docxPath" }
+        }
+    }
+}
 
 Write-Host "ALL DONE -- reports written to $OutDir"
