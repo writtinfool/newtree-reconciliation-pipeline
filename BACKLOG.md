@@ -33,10 +33,29 @@ Income, home value, and rent trends — currently only population trend is
 built. Reuses the exact ACS-vintage-comparison pattern already proven
 working (2018 vs. 2023 in get_population_trend()), just applied to
 more variables.
-5. Commercial Centers
+5. Commercial Centers — BUILT (rebuilt 2026-09-19), needs a live test with a real key
 Nearest Home Depot, Lowe's, Costco, Walmart, and Sam's Club, with
-distance to each. Uses the Places tool — no new API key needed beyond
-what's already required for item 3.
+distance to each. Implemented in fetch_demographics.py as
+get_commercial_centers(), wired into fetch_demographics()'s output under
+commercial_centers. Uses Places API (New) Text Search per chain (not a
+single type-based Nearby Search — diagnose_places.py testing showed a
+home_improvement_store type search returns Walmart, Home Depot, AND
+Lowe's all in one result set, so type alone can't tell chains apart),
+filtered by name match, nearest by straight-line distance
+(_haversine_miles(), shared with item 2 when that's built). Needs
+PLACES_API_KEY set (see diagnose_places.py) — run
+python3 fetch_demographics.py "<address>" and check the
+commercial_centers block in the output to confirm live before calling
+this done-done.
+
+NOTE: this was already built once, on 2026-08-22, and pushed as far as a
+local file write — but the actual git commit for that work never
+happened (only the original item-5-unbuilt version of this file made it
+into commit 2297cd4), so it was silently lost when a later session
+edited fetch_demographics.py without it. Rebuilt from scratch 2026-09-19.
+If you're reading this and about to touch fetch_demographics.py: commit
+your changes to this specific file before moving on, don't just leave
+them written to disk.
 6. Permit Office Routing
 No nationwide API for this — needs a curated table: incorporated
 addresses route to the city building department; unincorporated

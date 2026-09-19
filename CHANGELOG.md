@@ -1,5 +1,91 @@
 # Changelog
 
+## 2026-09-19
+### Added
+- **Commercial Centers rebuilt** — `fetch_demographics.py` gained
+  `get_commercial_centers()` (nearest Home Depot/Lowe's/Costco/Walmart/
+  Sam's Club + straight-line distance, via Places API (New) Text Search
+  per chain name) and property lat/lng on the geocode result
+  (`latitude`/`longitude`), wired into `fetch_demographics()`'s output as
+  `commercial_centers`. See BACKLOG.md item 5. Compile-checked and the
+  haversine/geocode path confirmed live without a key; the actual Places
+  calls need `PLACES_API_KEY` set (Harold's machine only) before
+  considered fully confirmed.
+### Fixed
+- **This is a rebuild, not new work** — this exact feature was already
+  built once on 2026-08-22, but the git commit for it never happened
+  (only `BACKLOG.md`'s original, not-yet-built item-5 text made it into
+  commit `2297cd4`; the actual code was never committed at all). It was
+  silently overwritten by a later session's edits to the same file
+  sometime before 2026-09-12. Root-caused via `git show 2297cd4 --stat`
+  and `git show 84945ee --stat`, neither of which touched the
+  commercial-centers code. See the Notion "Reconciliation Pipeline" page
+  and `BACKLOG.md` item 5 for the full story.
+
+## 2026-09-14
+### Added
+- **`run_lender_ui.bat`** + a "Newtree Lender Matching" Desktop shortcut --
+  launches `lender_matching/lender_ui.py` via `pythonw.exe` (no console
+  window) with one double-click. Requested by Harold after testing the
+  Tkinter UI and confirming it's the right direction.
+
+### Fixed
+- **Logan Investments' email typo** -- DATA_GAPS_2026-09-13.md had claimed
+  this was corrected, but the actual Notion write was missed in the stage-1
+  batch. Caught by testing `export_lenders.py` against live data (once
+  Harold added a real `NOTION_API_KEY`) and fixed directly in Notion.
+- Added `lender_matching/lenders.json` to `.gitignore` (generated output,
+  same category as `reconciled*.json`).
+
+## 2026-09-13
+### Added
+- **`lender_matching/`** -- separate from the property-reconciliation pipeline
+  above. `export_lenders.py` pulls the reconciled Notion "Lender Directory"
+  database (31 lenders, consolidated 2026-09-13 from 5 previously-duplicated
+  Notion tables plus scattered local files) into `lenders.json` via the
+  Notion REST API (stdlib `urllib` only, no new dependency); `match_lender.py`
+  filters that JSON against a lead's loan type/state/credit score/loan amount,
+  conservatively (a criterion only excludes a lender when the record
+  explicitly says so -- an unset field never silently disqualifies), and
+  always flags lenders still marked `Needs Verification` in Notion rather
+  than treating them as reliable. See README.md's "Lender Matching" section.
+  Needs its own `NOTION_API_KEY` (a real Notion integration token, separate
+  from the OAuth connector used inside a Claude session) since it's meant to
+  run unattended. Scheduled auto-refresh of `lenders.json` not yet built --
+  see OPEN_ITEMS.md.
+- **`lender_matching/lender_ui.py`** -- Tkinter desktop UI wrapping both
+  scripts (a "Refresh from Notion" button, a search form, a results table,
+  "Copy Results" to clipboard). Chosen over a local web page as the simpler
+  starting point (no server to run); a web UI may still be built later.
+- **Lender Directory schema: "Inactive" and "Lender Type" properties.**
+  Added per Harold after reviewing the document-completeness findings: an
+  `Inactive` checkbox (excluded from match_lender.py results by default, new
+  `--include-inactive` flag to see them anyway) and a `Lender Type` select
+  (Direct Lender / Referral Marketplace / Credit-Stacking Service). Per
+  Harold, Referral Marketplace relationships (SBLS, South End Capital) exist
+  specifically to refer deals in states he isn't licensed to broker directly
+  -- match_lender.py tags these in its output but does not yet filter by
+  state-licensing fit, since Newtree's own broker-state footprint isn't
+  tracked anywhere yet (see OPEN_ITEMS.md).
+- **`lender_matching/broker_footprint.json`** -- Newtree's own
+  broker-state exclusion list (AZ, CA, ID, NV, NJ, NY, NC, ND, OR, SD, VT,
+  WI), sourced from the company's BiggerPockets business profile. When
+  `match_lender.py --state` is one of these, results now auto-restrict to
+  `Referral Marketplace`-type lenders, per Harold: those relationships exist
+  specifically so a client from a state he can't broker in directly isn't
+  turned away. (Corrects an earlier misattribution: a state list found in
+  Lima One Capital's intake form during the document review was Lima One's
+  own restriction, not Newtree's footprint.)
+- **Stage 1 Notion corrections applied** (see
+  `lender_matching/DATA_GAPS_2026-09-13.md`): fixed Builders Finance's
+  swapped loan-amount fields, corrected Kiavi's states-excluded list,
+  cleared Atlantic Union's non-applicable credit-score field, enriched Cofi
+  Capital, re-tagged Fund&Grow as Credit-Stacking Service, added Origin
+  Mortgage (a signed-but-untracked broker relationship), added South End
+  Capital and SBLS as Referral Marketplace entries, renamed "Revel" to
+  "Reveal Lending" to match its own branding, and marked Relip Capital
+  Inactive (Harold no longer works with them).
+
 ## 2026-09-12
 ### Added
 - **Three report perspectives from one reconciled.json.** Added

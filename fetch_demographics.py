@@ -24,7 +24,7 @@ Get a free Census key (instant, no approval wait) at:
 Get a free BLS key (raises limit from 25/day to 500/day, 10yr to 20yr span) at:
     https://data.bls.gov/registrationEngine/
 
-STATUS AS OF LAST BUILD (2026-08-21): county- and place-level population,
+STATUS AS OF LAST BUILD (2026-09-19): county- and place-level population,
 median household income, renter-occupied %, and unemployment trend are
 implemented and CONFIRMED WORKING LIVE with a real Census API key against
 84 Inlet Dr, Slidell, LA. Population trend is also confirmed working, but
@@ -34,16 +34,27 @@ reachable through the public API (2019 works, 2020-2024 do not; see the
 NOTE near the top of this file). The nearest-city fallback chain
 (incorporated place > CDP > mailing city > county subdivision) is also
 confirmed working live -- correctly returns "Eden Isle" rather than the
-meaningless voting-district name "District 12" for this address. Metro/CBSA
-context, distance calculations, nearest-INCORPORATED-city lookup (via a
-Places-tool search), commercial centers, and permit-office routing were
-planned in detail but NOT implemented in this file -- see the companion
-Demographics & Economics Module doc for the full backlog.
+meaningless voting-district name "District 12" for this address.
+
+Commercial Centers (nearest Home Depot/Lowe's/Costco/Walmart/Sam's Club +
+straight-line distance, get_commercial_centers()) is implemented, using
+Places API (New) Text Search per chain name -- confirmed via
+diagnose_places.py testing that a type-based search returns multiple
+chains mixed together, so type alone can't tell them apart. Needs
+PLACES_API_KEY set to run live; not yet re-validated against a real key
+since this rebuild (see BACKLOG.md item 5 and CHANGELOG.md for the
+history of why this needed rebuilding once already).
+
+Metro/CBSA context, distance-to-metro, nearest-INCORPORATED-city lookup,
+historical trends beyond population, and permit-office routing remain
+planned but NOT implemented in this file -- see BACKLOG.md for the full
+backlog (items 1, 2, 3, 4, 6).
 """
 
 import os
 import sys
 import json
+import math
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -69,12 +80,31 @@ _load_dotenv()
 
 CENSUS_API_KEY = os.environ.get("CENSUS_API_KEY", "")
 BLS_API_KEY = os.environ.get("BLS_API_KEY", "")
+PLACES_API_KEY = os.environ.get("PLACES_API_KEY", "")
 
 GEOCODER_URL = "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
 ACS_URL_TMPL = "https://api.census.gov/data/{year}/acs/acs5"
 BLS_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 
 ACS_YEAR = 2023          # latest available 5-year ACS release as of this build
+
+# Commercial Centers (BACKLOG.md item 5). Rebuilt 2026-09-19 -- an earlier
+# version of this code was written during the 2026-08-22 session but was
+# never actually committed to git (only BACKLOG.md's original item-5 listing
+# was committed, in 2297cd4), so it was silently lost when a later session
+# edited this same file without it. Lesson: a file write via the device
+# bridge is not durable until it's actually committed -- see this repo's
+# git history / the Notion "Reconciliation Pipeline" page for the full story.
+#
+# One chain name per Text Search call, not a single type-based Nearby
+# Search -- confirmed live during diagnose_places.py testing that a
+# home_improvement_store type search returns Walmart, Home Depot, AND
+# Lowe's all mixed together in one result set, so type alone can't tell
+# chains apart. Text Search per chain name + a name-match filter avoids that.
+COMMERCIAL_CHAINS = ["Home Depot", "Lowe's", "Costco", "Walmart", "Sam's Club"]
+SEARCH_RADIUS_METERS = 80467.2  # 50 miles
+R_MILES = 3958.8  # Earth radius, for haversine distance in miles
 
 # NOTE: pep/population (Census PEP dataset) is NOT currently used by this module.
 # Live diagnostic testing on 2026-08-21 confirmed that, of vintages 2018-2024,
@@ -123,6 +153,9 @@ def geocode_address(address):
 
     is_incorporated = len(place) > 0 and place[0]
     place_info = place[0] if is_incorporated else {}
+    coords = m.get("coordinates") or {}
+    latitude = coords.get("y")
+    longitude = coords.get("x")
     # CDP (Census Designated Place, e.g. "Eden Isle CDP") is a real, recognizable
     # populated-place name for unincorporated areas -- much better fallback than
     # a county subdivision, which in Louisiana/some states is a voting ward or
@@ -140,6 +173,8 @@ def geocode_address(address):
         "is_incorporated": bool(is_incorporated),
         "cdp_name": cdp_info.get("BASENAME"),  # e.g. "Eden Isle" -- best fallback for unincorporated
         "county_subdivision_name": cousub.get("NAME"),  # last-resort fallback only
+        "latitude": latitude,
+        "longitude": longitude,
     }
 
 
@@ -385,6 +420,91 @@ def get_bls_unemployment_trend(state_fips, county_fips):
     }
 
 
+def _haversine_miles(lat1, lng1, lat2, lng2):
+    """Great-circle distance in miles between two lat/lng points."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R_MILES * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def get_commercial_centers(latitude, longitude):
+    """
+    Nearest Home Depot / Lowe's / Costco / Walmart / Sam's Club to the
+    property, with straight-line distance to each. One per dict key,
+    {"error": ...} for any chain with no result within SEARCH_RADIUS_METERS
+    or if PLACES_API_KEY isn't set.
+    """
+    if not PLACES_API_KEY:
+        return {"error": "PLACES_API_KEY not set -- see diagnose_places.py"}
+    if latitude is None or longitude is None:
+        return {"error": "No property coordinates available (geocoder returned none)."}
+
+    results = {}
+    for chain in COMMERCIAL_CHAINS:
+        chain_lower = chain.lower().replace("'", "")
+        try:
+            body = {
+                "textQuery": chain,
+                "locationBias": {
+                    "circle": {
+                        "center": {"latitude": latitude, "longitude": longitude},
+                        "radius": SEARCH_RADIUS_METERS,
+                    }
+                },
+            }
+            req = urllib.request.Request(
+                PLACES_TEXT_SEARCH_URL,
+                data=json.dumps(body).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": PLACES_API_KEY,
+                    "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+        except Exception as e:
+            results[chain] = {"error": str(e)}
+            continue
+
+        # Text Search for one chain name can still surface a different chain
+        # in the mix (e.g. a shopping center anchored by more than one big
+        # box) -- filter by name match rather than trusting result order.
+        candidates = [
+            p for p in data.get("places", [])
+            if chain_lower in p.get("displayName", {}).get("text", "").lower().replace("'", "")
+        ]
+        if not candidates:
+            results[chain] = {"error": f"No {chain} found within {SEARCH_RADIUS_METERS / 1609.34:.0f} miles"}
+            continue
+
+        best = None
+        best_dist = None
+        for p in candidates:
+            loc = p.get("location") or {}
+            p_lat, p_lng = loc.get("latitude"), loc.get("longitude")
+            if p_lat is None or p_lng is None:
+                continue
+            dist = _haversine_miles(latitude, longitude, p_lat, p_lng)
+            if best_dist is None or dist < best_dist:
+                best, best_dist = p, dist
+
+        if best is None:
+            results[chain] = {"error": f"No {chain} with usable coordinates found"}
+            continue
+
+        results[chain] = {
+            "name": best.get("displayName", {}).get("text"),
+            "address": best.get("formattedAddress"),
+            "distance_miles": round(best_dist, 1),
+        }
+
+    return results
+
+
 def fetch_demographics(address):
     """
     Main entry point. Call this from reconcile.py.
@@ -405,6 +525,8 @@ def fetch_demographics(address):
         result["unemployment_trend_county"] = get_bls_unemployment_trend(geo["state_fips"], geo["county_fips"])
     else:
         result["error"] = "Geocoder did not return state/county FIPS -- cannot pull ACS/PEP/BLS data."
+
+    result["commercial_centers"] = get_commercial_centers(geo.get("latitude"), geo.get("longitude"))
 
     return result
 
